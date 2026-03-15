@@ -15,7 +15,7 @@
     <!-- 查询功能区 -->
     <div class="query-section">
       <div class="query-form">
-        <!-- 模糊查询 -->
+        <!-- 模糊查询（标题/位置/分类编码） -->
         <div class="query-group">
           <label>查询:</label>
           <div class="fuzzy-query-controls">
@@ -40,7 +40,7 @@
             <div class="fuzzy-input-group">
               <input 
                 v-model="codeQuery" 
-                placeholder="输入分类编码" 
+                placeholder="输入分类编码 (2/4/6位或更多)" 
                 class="input-medium"
                 @keyup.enter="searchByFuzzy"
               />
@@ -53,26 +53,8 @@
           </div>
         </div>
 
-        <!-- ID查询 -->
+        <!-- 重置视图按钮 -->
         <div class="query-group">
-          <label>ID查询:</label>
-          <div class="id-query-controls">
-            <input 
-              v-model="idQuery" 
-              placeholder="输入招标信息ID" 
-              class="input-medium"
-            />
-            <button @click="loadById" :disabled="loading.id || !idQuery" class="btn-secondary">
-              {{ loading.id ? '查询中...' : '查询' }}
-            </button>
-          </div>
-        </div>
-
-        <!-- 查询全部 -->
-        <div class="query-group">
-          <button @click="loadAllData" :disabled="loading.all" class="btn-warning">
-            {{ loading.all ? '加载中...' : '查询全部数据' }}
-          </button>
           <button @click="resetView" class="btn-reset">重置视图</button>
         </div>
       </div>
@@ -121,7 +103,22 @@
               </h3>
               <div class="card-subtitle">
                 <span class="card-id">ID: {{ item.id }}</span>
-                <span v-if="item.code" class="card-code">分类编码: {{ item.code }}</span>
+                <!-- 分类标签区域 - 从categoryList获取 -->
+                <div class="category-tags" v-if="item.categoryList && item.categoryList.length">
+                  <template v-for="(cat, idx) in validCategories(item.categoryList)" :key="idx">
+                    <span 
+                      class="category-tag"
+                      :title="getCategoryDisplay(cat)"
+                    >
+                      {{ getCategoryDisplay(cat) }}
+                    </span>
+                  </template>
+                  <!-- 如果没有有效的分类，显示暂无分类 -->
+                  <span v-if="validCategories(item.categoryList).length === 0" class="category-tag no-category">
+                    暂无分类
+                  </span>
+                </div>
+                <span v-else class="category-tag no-category">暂无分类</span>
               </div>
             </div>
             <div class="card-status">
@@ -182,7 +179,14 @@
               <div class="info-item">
                 <span class="label">分类编码:</span>
                 <span class="value">
-                <span class="value">{{ item.categoryCode || 'N/A' }}</span>
+                  <!-- 详情页显示所有分类 -->
+                  <template v-if="item.categoryList && item.categoryList.length">
+                    <div v-for="(cat, idx) in validCategories(item.categoryList)" :key="idx" class="detail-category-item">
+                      {{ getCategoryDisplay(cat) }}
+                    </div>
+                    <span v-if="validCategories(item.categoryList).length === 0">N/A</span>
+                  </template>
+                  <span v-else>N/A</span>
                 </span>
               </div>
             </div>
@@ -208,12 +212,35 @@
                     <span class="detail-label">文件获取时间:</span>
                     <span class="detail-value">{{ item.docStartTime || 'N/A' }} 至 {{ item.docEndTime || 'N/A' }}</span>
                   </div>
-                  <div class="detail-item" v-if="item.code">
-                    <span class="detail-label">分类编码:</span>
-                    <span class="detail-value">
-                      <span v-if="highlightText(item.code, codeQuery)" v-html="highlightText(item.code, codeQuery)"></span>
-                      <span v-else>{{ item.code }}</span>
-                    </span>
+                </div>
+              </div>
+
+              <!-- 分类详情（新增） -->
+              <div class="details-section" v-if="item.categoryList && item.categoryList.length">
+                <h4>分类信息</h4>
+                <div class="category-details">
+                  <div v-for="(cat, idx) in item.categoryList" :key="idx" class="category-detail-item" :class="{ 'not-classified': cat.isClassifyed === '0' }">
+                    <div class="category-header">
+                      <span class="category-badge" v-if="cat.isClassifyed === '1'">已分类</span>
+                      <span class="category-badge not-classified" v-else>未分类</span>
+                      <span class="category-time">{{ formatDate(cat.createdTime) }}</span>
+                    </div>
+                    <div class="category-levels">
+                      <div v-if="cat.codeLevel1 && cat.nameLevel1" class="category-level">
+                        <span class="level-code">{{ cat.codeLevel1 }}</span>
+                        <span class="level-name">{{ cat.nameLevel1 }}</span>
+                      </div>
+                      <div v-if="cat.codeLevel2 && cat.nameLevel2" class="category-level">
+                        <span class="level-arrow">→</span>
+                        <span class="level-code">{{ cat.codeLevel2 }}</span>
+                        <span class="level-name">{{ cat.nameLevel2 }}</span>
+                      </div>
+                      <div v-if="cat.codeLevel3 && cat.nameLevel3" class="category-level">
+                        <span class="level-arrow">→</span>
+                        <span class="level-code">{{ cat.codeLevel3 }}</span>
+                        <span class="level-name">{{ cat.nameLevel3 }}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -286,9 +313,6 @@
               <button @click.stop="viewOriginal(item.infoUrl)" class="btn-action" v-if="item.infoUrl">
                 查看原文
               </button>
-              <button @click.stop="copyToClipboard(item.code)" class="btn-action" v-if="item.code">
-                复制分类编码
-              </button>
             </div>
           </div>
         </div>
@@ -307,7 +331,7 @@
         <button v-if="searchActive" @click="clearSearch" class="btn-primary">清除搜索条件</button>
       </div>
 
-      <!-- 分页导航（仅分页查询时显示） -->
+      <!-- 分页导航 -->
       <div v-if="showPagination && totalCount > pagination.pageSize" class="pagination">
         <div class="pagination-btns">
           <button 
@@ -331,7 +355,7 @@
             下一页
           </button>
         </div>
-        <!-- 分页查询 -->
+        <!-- 分页控制 -->
         <div class="query-group">
           <div class="pagination-controls">
             <input 
@@ -363,6 +387,21 @@
 import { ref, computed, onMounted } from 'vue';
 import { requestClient } from '#/api/request';
 import { message } from 'ant-design-vue';
+
+// 分类项类型定义
+interface CategoryItem {
+  id: number;
+  projectId: string;
+  codeLevel1: string;
+  nameLevel1: string;
+  codeLevel2?: string;
+  nameLevel2?: string;
+  codeLevel3?: string;
+  nameLevel3?: string;
+  isClassifyed: string;
+  createdTime: string;
+  updatedTime: string;
+}
 
 // 类型定义
 interface TenderData {
@@ -405,9 +444,11 @@ interface TenderData {
   aiClassifyTime: string | null;
   createdTime: string;
   updatedTime: string;
-  // 新增的分类编码字段
-  categoryCode: string;
-  code: string;
+  // 分类列表字段
+  categoryList?: CategoryItem[];
+  // 保留原字段兼容
+  code?: string;
+  categoryCode?: string;
 }
 
 // 状态管理
@@ -417,7 +458,6 @@ const pagination = ref({
 });
 
 // 查询参数
-const idQuery = ref('');
 const titleQuery = ref('');
 const positionQuery = ref('');
 const codeQuery = ref('');
@@ -434,9 +474,7 @@ const currentQuery = ref({
 
 // 加载状态
 const loading = ref({
-  all: false,
   page: false,
-  id: false,
   fuzzy: false
 });
 
@@ -449,7 +487,7 @@ const updateTime = computed(() => {
 });
 
 const isLoading = computed(() => {
-  return loading.value.all || loading.value.page || loading.value.id || loading.value.fuzzy;
+  return loading.value.page || loading.value.fuzzy;
 });
 
 const searchQuerySummary = computed(() => {
@@ -466,11 +504,6 @@ onMounted(() => {
   loadPageData();
 });
 
-// 辅助函数：安全地访问数组元素
-const getFirstItem = () => {
-  return tenderData.value.length > 0 ? tenderData.value[0] : null;
-};
-
 // 高亮显示搜索关键词
 const highlightText = (text: string, keyword: string) => {
   if (!text || !keyword || keyword.trim() === '') return null;
@@ -479,7 +512,6 @@ const highlightText = (text: string, keyword: string) => {
   const textLower = text.toLowerCase();
   
   if (textLower.includes(keywordLower)) {
-    // 转义特殊字符
     const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`(${escapedKeyword})`, 'gi');
     return text.replace(regex, '<span class="highlight">$1</span>');
@@ -488,9 +520,69 @@ const highlightText = (text: string, keyword: string) => {
   return null;
 };
 
+// 获取分类的最高层级代码和名称组合
+const getHighestLevelCategory = (cat: CategoryItem): { code: string; name: string } | null => {
+  // 如果 isClassifyed 为 '0'，表示未分类，返回 null
+  if (cat.isClassifyed === '0') return null;
+  
+  // 从最高层级往下找，优先返回有数据的最深层级
+  if (cat.codeLevel3 && cat.nameLevel3 && cat.codeLevel3.trim() !== '' && cat.nameLevel3.trim() !== '') {
+    return { code: cat.codeLevel3, name: cat.nameLevel3 };
+  }
+  if (cat.codeLevel2 && cat.nameLevel2 && cat.codeLevel2.trim() !== '' && cat.nameLevel2.trim() !== '') {
+    return { code: cat.codeLevel2, name: cat.nameLevel2 };
+  }
+  if (cat.codeLevel1 && cat.nameLevel1 && cat.codeLevel1.trim() !== '' && cat.nameLevel1.trim() !== '') {
+    return { code: cat.codeLevel1, name: cat.nameLevel1 };
+  }
+  return null;
+};
+
+// 获取分类显示文本（代码 + 名称）
+const getCategoryDisplay = (cat: CategoryItem): string => {
+  const highest = getHighestLevelCategory(cat);
+  if (highest) {
+    return `${highest.code} ${highest.name}`;
+  }
+  return '未分类';
+};
+
+// 过滤出有效的分类（已分类且有数据的）
+const validCategories = (categoryList: CategoryItem[]): CategoryItem[] => {
+  return categoryList.filter(cat => getHighestLevelCategory(cat) !== null);
+};
+
+// 格式化日期
+const formatDate = (dateStr: string): string => {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
+// 校验分类编码输入格式（2、4、6位或更多位）
+const isValidCodeQuery = (code: string): boolean => {
+  if (!code) return true;
+  const len = code.length;
+  return len === 2 || len === 4 || len === 6 || len >= 7;
+};
+
 // 模糊搜索
 const searchByFuzzy = async () => {
-  // 检查是否至少有一个查询条件
+  if (codeQuery.value && !isValidCodeQuery(codeQuery.value)) {
+    message.warning('分类编码必须为2位、4位、6位或更多位');
+    return;
+  }
+
   if (!titleQuery.value && !positionQuery.value && !codeQuery.value) {
     message.warning('请输入标题、位置或分类编码关键词');
     return;
@@ -500,14 +592,12 @@ const searchByFuzzy = async () => {
   showPagination.value = true;
   searchActive.value = true;
   
-  // 保存当前查询条件
   currentQuery.value = {
     title: titleQuery.value.trim(),
     position: positionQuery.value.trim(),
     code: codeQuery.value.trim()
   };
   
-  // 重置到第一页
   pagination.value.pageNum = 1;
   
   try {
@@ -518,56 +608,37 @@ const searchByFuzzy = async () => {
       pageSize: pagination.value.pageSize
     };
     
-    // 添加模糊查询参数
-    if (currentQuery.value.title) {
-      params.title = currentQuery.value.title;
-    }
+    if (currentQuery.value.title) params.title = currentQuery.value.title;
+    if (currentQuery.value.position) params.position = currentQuery.value.position;
+    if (currentQuery.value.code) params.code = currentQuery.value.code;
     
-    if (currentQuery.value.position) {
-      params.position = currentQuery.value.position;
-    }
+    const response = await requestClient.get('/api/tender-parsed/page', { params });
     
-    if (currentQuery.value.code) {
-      params.code = currentQuery.value.code;
-    }
-    
-    const response = await requestClient.get('/api/tender-parsed/page', {
-      params: params
-    });
-    
-    console.log('模糊搜索响应:', response);
-    
-    // 处理返回数据
     let data: TenderData[] = [];
     let count = 0;
     
-    if (Array.isArray(response)) {
-      data = response;
-      count = response.length;
-    } else if (response && typeof response === 'object') {
-      if (Array.isArray(response.data)) {
-        data = response.data;
-        count = response.total || response.data.length;
-      } else if (response.data && Array.isArray(response.data.data)) {
-        data = response.data.data;
-        count = response.data.total || response.data.data.length;
-      } else if (Array.isArray(response.records)) {
-        data = response.records;
-        count = response.total || response.records.length;
-      } else if (response.data && Array.isArray(response.data.records)) {
+    // 处理标准分页响应格式
+    if (response && response.data) {
+      if (response.data.records) {
         data = response.data.records;
         count = response.data.total || response.data.records.length;
+      } else if (Array.isArray(response.data)) {
+        data = response.data;
+        count = response.data.length;
+      } else {
+        data = response.data;
+        count = response.total || (Array.isArray(response.data) ? response.data.length : 0);
       }
+    } else if (Array.isArray(response)) {
+      data = response;
+      count = response.length;
+    } else if (response && response.records) {
+      data = response.records;
+      count = response.total || response.records.length;
     }
     
     tenderData.value = data || [];
     totalCount.value = count || 0;
-    
-    console.log('模糊搜索结果:', {
-      dataLength: tenderData.value.length,
-      totalCount: totalCount.value,
-      query: currentQuery.value
-    });
     
     if (tenderData.value.length > 0) {
       message.success(`找到 ${totalCount.value} 条匹配结果`);
@@ -578,14 +649,13 @@ const searchByFuzzy = async () => {
     console.error('模糊搜索失败:', error);
     tenderData.value = [];
     totalCount.value = 0;
-    
     message.error(`搜索失败: ${error.message || '未知错误'}`);
   } finally {
     loading.value.fuzzy = false;
   }
 };
 
-// 清除模糊查询
+// 清除模糊查询输入
 const clearFuzzyQuery = () => {
   titleQuery.value = '';
   positionQuery.value = '';
@@ -607,63 +677,44 @@ const loadPageData = async () => {
   showPagination.value = true;
   
   try {
-    console.log('开始分页查询:', pagination.value);
-    
     const params: any = {
       pageNum: pagination.value.pageNum,
       pageSize: pagination.value.pageSize
     };
     
-    // 如果当前有活跃的搜索条件，则带上
     if (searchActive.value && (currentQuery.value.title || currentQuery.value.position || currentQuery.value.code)) {
-      if (currentQuery.value.title) {
-        params.title = currentQuery.value.title;
-      }
-      if (currentQuery.value.position) {
-        params.position = currentQuery.value.position;
-      }
-      if (currentQuery.value.code) {
-        params.code = currentQuery.value.code;
-      }
+      if (currentQuery.value.title) params.title = currentQuery.value.title;
+      if (currentQuery.value.position) params.position = currentQuery.value.position;
+      if (currentQuery.value.code) params.code = currentQuery.value.code;
     }
     
-    const response = await requestClient.get('/api/tender-parsed/page', {
-      params: params
-    });
+    const response = await requestClient.get('/api/tender-parsed/page', { params });
     
-    console.log('分页查询响应:', response);
-    
-    // 处理返回数据
     let data: TenderData[] = [];
     let count = 0;
     
-    if (Array.isArray(response)) {
-      data = response;
-      count = response.length;
-    } else if (response && typeof response === 'object') {
-      if (Array.isArray(response.data)) {
-        data = response.data;
-        count = response.total || response.data.length;
-      } else if (response.data && Array.isArray(response.data.data)) {
-        data = response.data.data;
-        count = response.data.total || response.data.data.length;
-      } else if (Array.isArray(response.records)) {
-        data = response.records;
-        count = response.total || response.records.length;
-      } else if (response.data && Array.isArray(response.data.records)) {
+    // 处理标准分页响应格式
+    if (response && response.data) {
+      if (response.data.records) {
         data = response.data.records;
         count = response.data.total || response.data.records.length;
+      } else if (Array.isArray(response.data)) {
+        data = response.data;
+        count = response.data.length;
+      } else {
+        data = response.data;
+        count = response.total || (Array.isArray(response.data) ? response.data.length : 0);
       }
+    } else if (Array.isArray(response)) {
+      data = response;
+      count = response.length;
+    } else if (response && response.records) {
+      data = response.records;
+      count = response.total || response.records.length;
     }
     
     tenderData.value = data || [];
     totalCount.value = count || 0;
-    
-    console.log('处理后的数据:', {
-      dataLength: tenderData.value.length,
-      totalCount: totalCount.value,
-      firstItem: getFirstItem()
-    });
     
     if (tenderData.value.length > 0) {
       const msg = searchActive.value ? 
@@ -677,127 +728,15 @@ const loadPageData = async () => {
     console.error('分页数据加载失败:', error);
     tenderData.value = [];
     totalCount.value = 0;
-    
     message.error(`数据加载失败: ${error.message || '未知错误'}`);
   } finally {
     loading.value.page = false;
   }
 };
 
-// 加载全部数据
-const loadAllData = async () => {
-  loading.value.all = true;
-  showPagination.value = false;
-  searchActive.value = false;
-  currentQuery.value = { title: '', position: '', code: '' };
-  
-  try {
-    console.log('开始查询全部数据');
-    
-    const response = await requestClient.get('/api/tender-parsed/all');
-    
-    console.log('全部查询响应:', response);
-    
-    // 处理返回数据
-    let data: TenderData[] = [];
-    
-    if (Array.isArray(response)) {
-      data = response;
-    } else if (response && Array.isArray(response.data)) {
-      data = response.data;
-    } else if (response && response.data && Array.isArray(response.data.data)) {
-      data = response.data.data;
-    } else if (response && Array.isArray(response.records)) {
-      data = response.records;
-    }
-    
-    tenderData.value = data || [];
-    totalCount.value = data.length;
-    
-    console.log('全部数据:', {
-      dataLength: tenderData.value.length,
-      firstItem: getFirstItem()
-    });
-    
-    if (tenderData.value.length > 0) {
-      message.success(`成功加载全部 ${tenderData.value.length} 条数据`);
-    } else {
-      message.info('未查询到数据');
-    }
-  } catch (error: any) {
-    console.error('全部数据加载失败:', error);
-    tenderData.value = [];
-    
-    message.error(`数据加载失败: ${error.message || '未知错误'}`);
-  } finally {
-    loading.value.all = false;
-  }
-};
-
-// 根据ID查询
-const loadById = async () => {
-  if (!idQuery.value) {
-    message.warning('请输入ID');
-    return;
-  }
-  
-  loading.value.id = true;
-  showPagination.value = false;
-  searchActive.value = false;
-  currentQuery.value = { title: '', position: '', code: '' };
-  
-  try {
-    console.log('开始ID查询:', idQuery.value);
-    
-    const response = await requestClient.get(`/api/tender-parsed/${idQuery.value}`);
-    
-    console.log('ID查询响应:', response);
-    
-    // 处理返回数据
-    let data: TenderData[] = [];
-    
-    if (response && response.id) {
-      data = [response];
-    } else if (response && response.data && response.data.id) {
-      data = [response.data];
-    } else if (response && response.data) {
-      data = [response.data];
-    }
-    
-    tenderData.value = data || [];
-    totalCount.value = data.length;
-    
-    console.log('ID查询结果:', {
-      dataLength: tenderData.value.length,
-      data: tenderData.value
-    });
-    
-    if (tenderData.value.length > 0) {
-      message.success('ID查询成功');
-      if (tenderData.value[0]) {
-        expandedCardId.value = tenderData.value[0].id;
-      }
-    } else {
-      message.warning('未找到对应ID的数据');
-    }
-  } catch (error: any) {
-    console.error('ID查询失败:', error);
-    tenderData.value = [];
-    
-    if (error.response?.status === 404) {
-      message.error('未找到对应ID的数据');
-    } else {
-      message.error(`查询失败: ${error.message || '未知错误'}`);
-    }
-  } finally {
-    loading.value.id = false;
-  }
-};
-
 // 重置视图
 const resetView = () => {
   pagination.value = { pageNum: 1, pageSize: 10 };
-  idQuery.value = '';
   titleQuery.value = '';
   positionQuery.value = '';
   codeQuery.value = '';
@@ -837,7 +776,6 @@ const nextPage = () => {
 // 格式化金额
 const formatCurrency = (amount: number) => {
   if (amount === null || amount === undefined) return 'N/A';
-  
   return new Intl.NumberFormat('zh-CN', {
     style: 'currency',
     currency: 'CNY',
@@ -848,28 +786,19 @@ const formatCurrency = (amount: number) => {
 // 获取状态文本
 const getStatusText = (item: TenderData) => {
   if (!item.biddingDeadline) return '未知';
-  
   try {
     const now = new Date();
     const deadlineStr = item.biddingDeadline.replace(/-/g, '/').replace(/\./g, '/');
     const deadline = new Date(deadlineStr);
-    
-    if (isNaN(deadline.getTime())) {
-      return '日期格式错误';
-    }
-    
-    if (deadline < now) {
-      return '已截止';
-    } else if (item.docStartTime) {
+    if (isNaN(deadline.getTime())) return '日期格式错误';
+    if (deadline < now) return '已截止';
+    if (item.docStartTime) {
       const startTimeStr = item.docStartTime.replace(/-/g, '/').replace(/\./g, '/');
       const startTime = new Date(startTimeStr);
-      if (!isNaN(startTime.getTime()) && startTime > now) {
-        return '即将开始';
-      }
+      if (!isNaN(startTime.getTime()) && startTime > now) return '即将开始';
     }
     return '进行中';
-  } catch (e) {
-    console.error('日期解析错误:', e);
+  } catch {
     return '未知';
   }
 };
@@ -877,32 +806,22 @@ const getStatusText = (item: TenderData) => {
 // 获取状态样式类
 const getStatusClass = (item: TenderData) => {
   const status = getStatusText(item);
-  
   switch (status) {
-    case '已截止':
-      return 'status-expired';
-    case '即将开始':
-      return 'status-upcoming';
-    case '进行中':
-      return 'status-active';
-    default:
-      return 'status-unknown';
+    case '已截止': return 'status-expired';
+    case '即将开始': return 'status-upcoming';
+    case '进行中': return 'status-active';
+    default: return 'status-unknown';
   }
 };
 
 // 获取解析状态文本
 const getParseStatusText = (status: number) => {
   switch (status) {
-    case 0:
-      return '待解析';
-    case 1:
-      return '解析中';
-    case 2:
-      return '解析完成';
-    case 3:
-      return '解析失败';
-    default:
-      return `未知状态(${status})`;
+    case 0: return '待解析';
+    case 1: return '解析中';
+    case 2: return '解析完成';
+    case 3: return '解析失败';
+    default: return `未知状态(${status})`;
   }
 };
 
@@ -912,11 +831,9 @@ const copyToClipboard = (text: string) => {
     message.warning('无内容可复制');
     return;
   }
-  
   navigator.clipboard.writeText(text).then(() => {
     message.success('已复制到剪贴板');
-  }).catch(err => {
-    console.error('复制失败:', err);
+  }).catch(() => {
     message.error('复制失败');
   });
 };
@@ -995,10 +912,6 @@ const viewOriginal = (url: string) => {
   min-width: 80px;
   margin-top: 8px;
 }
-.pagination-btns {
-  display: flex;
-  align-items: center;
-}
 
 /* 模糊查询样式 */
 .fuzzy-query-controls {
@@ -1026,7 +939,7 @@ const viewOriginal = (url: string) => {
   padding: 0 4px;
 }
 
-.pagination-controls, .id-query-controls {
+.pagination-controls {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1045,7 +958,7 @@ const viewOriginal = (url: string) => {
 
 .input-medium {
   width: 180px;
-  padding-right: 60px; /* 为标签留出空间 */
+  padding-right: 60px;
 }
 
 .select-small {
@@ -1077,24 +990,6 @@ button:disabled {
 
 .btn-primary:hover:not(:disabled) {
   background: #40a9ff;
-}
-
-.btn-secondary {
-  background: #52c41a;
-  color: white;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #73d13d;
-}
-
-.btn-warning {
-  background: #faad14;
-  color: white;
-}
-
-.btn-warning:hover:not(:disabled) {
-  background: #ffc53d;
 }
 
 .btn-info {
@@ -1207,15 +1102,137 @@ button:disabled {
   display: flex;
   gap: 10px;
   margin-top: 5px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
-.card-code {
+.card-id {
   font-size: 12px;
-  color: #722ed1;
-  background: #f9f0ff;
+  color: #999;
+  background: #f0f0f0;
   padding: 2px 6px;
   border-radius: 3px;
-  border: 1px solid #d3adf7;
+}
+
+/* 分类标签 */
+.category-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.category-tag {
+  background: #e6f7ff;
+  color: #1890ff;
+  border: 1px solid #91d5ff;
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-tag:hover {
+  background: #bae7ff;
+  border-color: #40a9ff;
+}
+
+.category-tag.no-category {
+  background: #f5f5f5;
+  color: #999;
+  border-color: #d9d9d9;
+}
+
+/* 详情页分类样式 */
+.detail-category-item {
+  padding: 2px 0;
+  color: #333;
+  border-bottom: 1px dashed #f0f0f0;
+}
+
+.detail-category-item:last-child {
+  border-bottom: none;
+}
+
+.category-details {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.category-detail-item {
+  background: #f9f9f9;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.category-detail-item.not-classified {
+  background: #fff2f0;
+  border-color: #ffccc7;
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.category-badge {
+  background: #52c41a;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.category-badge.not-classified {
+  background: #ff4d4f;
+}
+
+.category-time {
+  font-size: 11px;
+  color: #999;
+  margin-left: auto;
+}
+
+.category-levels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.category-level {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.level-arrow {
+  color: #999;
+  font-size: 14px;
+  margin: 0 4px;
+}
+
+.level-code {
+  background: #e6f7ff;
+  color: #1890ff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.level-name {
+  color: #333;
+  font-size: 13px;
 }
 
 /* 加载状态 */
@@ -1287,14 +1304,6 @@ button:disabled {
   line-height: 1.4;
 }
 
-.card-id {
-  font-size: 12px;
-  color: #999;
-  background: #f0f0f0;
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-
 .card-status {
   display: flex;
   flex-direction: column;
@@ -1352,7 +1361,7 @@ button:disabled {
 
 .info-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .label {
@@ -1360,6 +1369,7 @@ button:disabled {
   color: #666;
   min-width: 80px;
   margin-right: 8px;
+  flex-shrink: 0;
 }
 
 .value {
@@ -1400,7 +1410,7 @@ button:disabled {
 .detail-label {
   font-weight: bold;
   color: #666;
-  min-width: 120px;
+  min-width: 100px;
   margin-right: 10px;
   flex-shrink: 0;
 }
@@ -1496,6 +1506,12 @@ button:disabled {
   flex-direction: column;
 }
 
+.pagination-btns {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
 .pagination-btn {
   padding: 10px 20px;
   background: #1890ff;
@@ -1534,8 +1550,7 @@ button:disabled {
   }
   
   .fuzzy-query-controls,
-  .pagination-controls, 
-  .id-query-controls {
+  .pagination-controls {
     width: 100%;
     flex-direction: column;
     align-items: stretch;
@@ -1568,6 +1583,11 @@ button:disabled {
   .pagination {
     flex-direction: column;
     gap: 15px;
+  }
+  
+  .pagination-btns {
+    flex-direction: column;
+    gap: 10px;
   }
   
   .card-footer {
